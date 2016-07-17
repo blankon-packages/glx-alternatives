@@ -1,0 +1,116 @@
+Source: glx-alternatives
+Section: contrib/libs
+Priority: optional
+Maintainer: BlankOn Developers <blankon-dev@googlegroups.com>
+XSBC-Original-Maintainer: Debian NVIDIA Maintainers <pkg-nvidia-devel@lists.alioth.debian.org>
+Uploaders:
+ Russ Allbery <rra@debian.org>,
+ Andreas Beckmann <anbe@debian.org>,
+Vcs-Git: https://anonscm.debian.org/git/pkg-nvidia/glx-alternatives.git
+Vcs-Browser: https://anonscm.debian.org/cgit/pkg-nvidia/glx-alternatives.git
+Build-Depends:
+ debhelper (>= 9),
+Standards-Version: 3.9.8
+
+Package: update-glx
+Section: contrib/x11
+Architecture: i386 amd64 armhf
+Multi-Arch: foreign
+Depends:
+ ${misc:Depends}
+Description: utility for switching the GLX implementation
+ In setups with several GLX providers (e.g. the free MESA implementation and
+ proprietary graphics hardware vendor implementations) this utility
+ allows one to switch between the different implementations.
+ .
+ Use 'update-glx --config glx' to select an implementation.
+ .
+ In addition to updating the alternatives, this will trigger further actions
+ needed to complete the switch.
+
+Package: glx-diversions
+Architecture: i386 amd64 armhf
+Multi-Arch: foreign
+Pre-Depends:
+ nvidia-installer-cleanup,
+Depends:
+ dpkg (>= 1.15),
+ ${misc:Depends}
+Recommends:
+ glx-alternative-mesa,
+Conflicts:
+ libgl1-mesa-swx11,
+Description: prepare for using accelerated GLX implementations from GPU vendors
+ Diverts the free libGL.so implementation (MESA) and the xserver module
+ libglx.so (Xorg), preparing the system for plugging in accelerated
+ implementations from GPU vendors via alternatives, see the
+ glx-alternative-* packages.
+
+Package: glx-alternative-mesa
+Architecture: i386 amd64 armhf
+Multi-Arch: foreign
+Depends:
+ update-glx (= ${binary:Version}),
+ glx-diversions (= ${binary:Version}),
+ ${misc:Depends}
+Suggests:
+ libgl1-mesa-glx | libgl1,
+Description: allows the selection of MESA as GLX provider
+ In setups with several GLX providers (e.g. the free MESA implementation and
+ proprietary graphics hardware vendor implementations) this metapackage
+ allows one to switch back to MESA.
+ .
+ Use 'update-glx --config glx' to select an implementation.
+ .
+ This package does not depend on the corresponding MESA libraries.
+ In order to install the MESA libraries, install the libgl1-mesa-glx package
+ instead.
+
+Package: glx-alternative-nvidia
+Architecture: i386 amd64 armhf
+Multi-Arch: foreign
+Depends:
+ update-glx (= ${binary:Version}),
+ glx-diversions (= ${binary:Version}),
+ glx-alternative-mesa,
+ ${misc:Depends}
+Suggests:
+ nvidia-driver,
+Breaks:
+# does not use the nvidia/bumblebee glx alternative
+ bumblebee-nvidia (<< 3.2.1-10~),
+# old-style modprobe configuration snippets
+ nvidia-alternative (<< 341),
+ nvidia-legacy-340xx-alternative (<< 340.93-2~),
+ nvidia-legacy-304xx-alternative (<< 304.131-2~),
+Description: allows the selection of NVIDIA as GLX provider
+ In setups with several GLX providers (e.g. the free MESA implementation and
+ proprietary graphics hardware vendor implementations) this metapackage
+ allows one to switch to the non-free NVIDIA driver and libraries.
+ .
+ Use 'update-glx --config glx' to select an implementation.
+ .
+ This package does not depend on the corresponding NVIDIA libraries.
+ In order to install the NVIDIA driver and libraries, install the
+ nvidia-driver package instead.
+
+Package: glx-alternative-fglrx
+Architecture: i386 amd64
+Multi-Arch: foreign
+Depends:
+ update-glx (= ${binary:Version}),
+ glx-diversions (= ${binary:Version}),
+ glx-alternative-mesa,
+ ${misc:Depends}
+Suggests:
+ fglrx-driver,
+Description: allows the selection of FGLRX as GLX provider
+ In setups with several GLX providers (e.g. the free MESA implementation and
+ proprietary graphics hardware vendor implementations) this metapackage
+ allows one to switch to the non-free FGLRX driver and libraries.
+ .
+ Use 'update-glx --config glx' to select an implementation.
+ .
+ This package does not depend on the corresponding FGLRX libraries.
+ In order to install the FGLRX driver and libraries, install the fglrx-glx and
+ fglrx-driver packages instead.

@@ -1,0 +1,5 @@
+etc/modprobe.d
+usr/lib/fglrx
+usr/lib/fglrx/igpu
+usr/lib/xorg/modules/drivers
+usr/lib/xorg/modules/linux

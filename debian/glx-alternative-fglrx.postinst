@@ -1,0 +1,138 @@
+#!/bin/sh
+set -e
+
+
+TRIPLETS="/ /i386-linux-gnu/ /x86_64-linux-gnu/ /arm-linux-gnueabihf/"
+
+add_slave()
+{
+	local target_link name source_path prefix
+	target_link="$1"
+	name="$2"
+	source_path="$3"
+	prefix="glx--"
+
+	if [ -f "${source_path}" ] && [ -d "$(dirname "${target_link}")" ]; then
+		echo --slave "${target_link}" "${prefix}${name}" "${source_path}"
+	fi
+}
+
+add_multiarch_slave()
+{
+	local target_dir target_sub_dir file source_dir source_sub_dir prefix suffix triplet
+	target_dir="$1"
+	target_sub_dir="$2"
+	file="$3"
+	source_dir="$4"
+	source_sub_dir="$5"
+	prefix="$6"
+
+	for triplet in $TRIPLETS ; do
+		# s|/$||; s|^/|-|;
+		suffix="${triplet%/}"
+		suffix="${suffix:+-${suffix#/}}"
+		add_slave \
+			"${target_dir}${triplet}${target_sub_dir}${file}" \
+			"${prefix}${file}${suffix}" \
+			"${source_dir}${triplet}${source_sub_dir}${file}"
+	done
+}
+
+# try to find $library in $vendor, mesa, mesa-diverted
+search_multiarch_slave()
+{
+	local library vendor s
+	library="$1"
+	vendor="$2"
+
+	s="$(add_multiarch_slave /usr/lib "" $library /usr/lib $vendor/)"
+	if echo "$s" | grep -q "slave" ; then
+		echo "$s"
+		return
+	fi
+	s="$(add_multiarch_slave /usr/lib "" $library /usr/lib mesa/)"
+	if echo "$s" | grep -q "slave" ; then
+		echo "$s"
+		return
+	fi
+	s="$(add_multiarch_slave /usr/lib "" $library /usr/lib/mesa-diverted)"
+	echo "$s"
+}
+
+# Handles the alternatives for
+# * /usr/lib[/<triplet>]/libGL.so.1
+# * /usr/lib/xorg/modules/linux/libglx.so
+# * /usr/lib/xorg/modules/drivers/fglrx_drv.so 
+# * /etc/modprobe.d/fglrx-blacklists-radeon.conf
+setup_alternatives()
+{
+	driver_slaves="
+		$(add_slave /usr/lib/xorg/modules/drivers/fglrx_drv.so fglrx_drv.so /usr/lib/fglrx/fglrx_drv.so)
+"
+	libglx_slaves="
+		$(add_slave /usr/lib/xorg/modules/linux/libglx.so linux-libglx.so /usr/lib/fglrx/fglrx-libglx.so)
+"
+	libGL_fglrx_slaves="
+		$(add_multiarch_slave /usr/lib "" libGL.so.1 /usr/lib fglrx/)
+"
+	libGL_mesa_slaves="
+		$(search_multiarch_slave libGL.so.1 mesa)
+"
+
+	libEGL_mesa_slaves="
+		$(search_multiarch_slave libEGL.so.1 mesa)
+		$(search_multiarch_slave libGLESv1_CM.so.1 mesa)
+		$(search_multiarch_slave libGLESv2.so.2 mesa)
+"
+
+	minor_slaves="
+		$(add_slave /etc/modprobe.d/fglrx-blacklists-radeon.conf fglrx-blacklists-radeon.conf /etc/ati/fglrx-blacklists-radeon.conf)
+		"
+
+	libGL_slaves="$libGL_fglrx_slaves"
+	if ! echo "$libGL_slaves" | grep -q "slave" ; then
+		# fallback: MESA, libgl1-fglrx-glx is not required
+		libGL_slaves="$libGL_mesa_slaves"
+		# if we still got no slaves here we are fine - libGL.so* is not installed
+	fi
+
+	libEGL_slaves="$libEGL_mesa_slaves"
+
+	normal=
+	igpu=
+
+	if echo "$driver_slaves" | grep -q "slave" ; then
+		normal=1
+		igpu=1
+	fi
+
+	if echo "$libGL_fglrx_slaves" | grep -q "slave" ; then
+		normal=1
+	fi
+
+	if [ -n "$normal" ]; then
+		update-alternatives --install /usr/lib/glx glx /usr/lib/fglrx 99 $driver_slaves $libglx_slaves $libGL_slaves $libEGL_slaves $minor_slaves
+	fi
+	if [ -n "$igpu" ]; then
+		update-alternatives --install /usr/lib/glx glx /usr/lib/fglrx/igpu 90 $driver_slaves $libGL_mesa_slaves $libEGL_mesa_slaves $minor_slaves
+	else
+		update-alternatives --remove glx /usr/lib/fglrx/igpu
+	fi
+	if [ -z "$normal" ]; then
+		update-alternatives --remove glx /usr/lib/fglrx
+	fi
+
+	dpkg-trigger --no-await ldconfig
+
+	# trigger rebuilding the initrd to (de-)activate the radeon blacklist
+	dpkg-trigger --no-await update-initramfs
+}
+
+if [ "$1" = "triggered" ] || [ "$1" = "configure" ]; then
+
+	setup_alternatives
+
+fi
+
+
+#DEBHELPER#
